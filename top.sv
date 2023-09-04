@@ -11,8 +11,8 @@ module top (
 
     reg [2:0] state = S_FETCH;
 
-    reg [7:0] mem [0:1023];
-    // TODO: Write some memory (maybe load from file?)
+    reg [31:0] mem [0:1023];
+    // TODO: THIS CANNOT BE A REG, IT MUST BE CONNECTED THROUGH AN ADDRESS BUS
 
     // Main registers
     reg [31:0] reg_file [0:31];
@@ -43,57 +43,32 @@ module top (
 
     initial begin
         pc <= 0;
-        // mem[3:0] = 32'b1010101010101010; // LUI R1, 0x55555555
-        mem[0] = 8'b10110111;
-        mem[1] = 8'b10100000;
-        mem[2] = 8'b10101010;
-        mem[3] = 8'b10101010;
-        // mem[7:4] = 32'b000000000000000011110001; // LUI R2, 0x0000000E
-        mem[4] = 8'b00110111;
-        mem[5] = 8'b11110001;
-        mem[6] = 8'b00000000;
-        mem[7] = 8'b00000000;
-        // mem[11:8] = 32'b0000000000010001; // ADD R3, R1, R2
-        mem[8] = 8'b10110011;
-        mem[9] = 8'b00000001;
-        mem[10] = 8'b00010001;
-        mem[11] = 8'b00000000;
+        for (int i = 0; i < 32; i = i + 1) reg_file[i] <= 0;
+        mem[0]  <= 32'b00000000000100000000000010010011; // ADDI R1, R0, 1
+        mem[4]  <= 32'b00000000000100000000000100010011; // ADDI R2, R0, 1
+        mem[8]  <= 32'b00000110010000000000000110010011; // ADDI R3, R0, 100
+        mem[12] <= 32'b00000000000100010000000010110011; // ADD R1, R1, R2
+        mem[16] <= 32'b00000000000100011010000000100011; // SW R1, 0(R3)
+        mem[20] <= 32'b00000000000100010000000100110011; // ADD R2, R1, R2
+        mem[24] <= 32'b00000000001000011010000010100011; // SW R2, 0(R3)
+        mem[28] <= 32'b00000000001000011000000110010011; // ADDI R3, R3, 1
+        mem[32] <= 32'b00000000110000000000000001100111; // JALR, R0, R0, 8
     end
 
     // ----------- Pipeline Logic -----------
     always @ (posedge clk) begin
         // dump info
-        $display("State: %b", state);
-        $display("PC: %d", pc);
-        $display("Instruction: %b", instruction);
-        $display("Opcode: %b", opcode);
-        $display("RS1: %b", rs1);
-        $display("RS2: %b", rs2);
-        $display("RD: %b", rd);
-        $display("Funct3: %b", funct3);
-        $display("Funct7: %b", funct7);
-        $display("Imm: %b", imm);
-        $display("R1: %h", reg_file[1]);
-        $display("R2: %h", reg_file[2]);
-        $display("R3: %h", reg_file[3]);
-        $display("R4: %h", reg_file[4]);
-        $display("ADDR-100: %h", mem[100]);
-        $display("ADDR-101: %h", mem[101]);
-        $display("ADDR-102: %h", mem[102]);
-        $display("ADDR-103: %h", mem[103]);
-        $display("ADDR-104: %h", mem[104]);
-        $display("----------------------------------------------------");
         case (state)
             S_FETCH: begin
-                instruction <= {mem[pc+3], mem[pc+2], mem[pc+1], mem[pc]};
+                instruction <= mem[pc];
                 pc <= pc + 4;
                 state <= S_DECODE;
             end
             S_DECODE: begin
                 opcode <= instruction[6:0];
-                rs1 <= instruction[19:15];
-                rs2 <= instruction[24:20];
-                rd <= instruction[11:7];
+                rs1    <= instruction[19:15];
+                rs2    <= instruction[24:20];
+                rd     <= instruction[11:7];
                 funct3 <= instruction[14:12];
                 funct7 <= instruction[31:25];
                 case (instruction[6:0])
@@ -120,6 +95,7 @@ module top (
                         rd_data <= pc + 4;
                     end
                     7'b1100011: begin // BRANCH
+                        jmp_addr <= pc + 4; // If not jumping, return to next instruction
                         case (funct3)
                             3'b000: begin // BEQ
                                 if (reg_file[rs1] == reg_file[rs2]) begin
@@ -169,10 +145,11 @@ module top (
                         endcase
                     end
                     7'b0100011: begin
+                        mem_addr <= reg_file[rs1] + imm;
                         case (funct3)
-                            3'b000: mem_addr <= reg_file[rs1] + imm; // SB
-                            3'b001: mem_addr <= reg_file[rs1] + imm; // SH
-                            3'b010: mem_addr <= reg_file[rs1] + imm; // SW
+                            3'b000: mem_out <= reg_file[rs2][7:0]; // SB
+                            3'b001: mem_out <= reg_file[rs2][15:0]; // SH
+                            3'b010: mem_out <= reg_file[rs2][31:0]; // SW
                         endcase
                     end
                     7'b0010011: begin
@@ -226,19 +203,71 @@ module top (
                 state <= S_WRTBCK;
             end
             S_WRTBCK: begin
+                $display("Arrived at WRTBCK");
                 case (opcode)
-                    7'b0110111, 7'b0010111, 7'b1101111, 7'b1100111, 7'b1100011, 7'b0000011, 7'b0100011, 7'b0010011, 7'b0110011: begin
+                    7'b0110111, 7'b0010111, 7'b0000011, 7'b0010011, 7'b0110011: begin
+                        $display("Writing %h to register %d", rd_data, rd);
                         if (rd != 0) reg_file[rd] <= rd_data;
                     end
-                    7'b1100111, 7'b1100011, 7'b0000011, 7'b0100011: begin
-                        mem_out <= mem[mem_addr];
+                    7'b1100011, 7'b0000011, 7'b0100011: begin
+                        $display("Writing %h to memory address %d", mem_out, mem_addr);
+                        mem[mem_addr] <= mem_out;
                     end
-                    7'b1101111, 7'b1100111: begin
+                    7'b1101111, 7'b1100111, 7'b1100011: begin
+                        $display("JUMPIIIIIIIIIIIIIIIIIIING");
                         pc <= jmp_addr; // TODO: Check if this is correct, maybe move this part to the execure stage to save some time
                     end
                     default: begin end
                 endcase
                 state <= S_FETCH;
+                $display("Jump Address: %b", jmp_addr);
+                $display("State: %b", state);
+                $display("PC: %d", pc);
+                $display("Instruction: %b", instruction);
+                $display("Opcode: %b", opcode);
+                $display("RS1: %b", rs1);
+                $display("RS2: %b", rs2);
+                $display("RD: %b", rd);
+                $display("Funct3: %b", funct3);
+                $display("Funct7: %b", funct7);
+                $display("Imm: %b", imm);
+                $display("R1: %h", reg_file[1]);
+                $display("R2: %h", reg_file[2]);
+                $display("R3: %h", reg_file[3]);
+                $display("R4: %h", reg_file[4]);
+                $display("R5: %h", reg_file[5]);
+                $display("R6: %h", reg_file[6]);
+                $display("R7: %h", reg_file[7]);
+                $display("R8: %h", reg_file[8]);
+                $display("R9: %h", reg_file[9]);
+                $display("R10: %h", reg_file[10]);
+                $display("R11: %h", reg_file[11]);
+                $display("R12: %h", reg_file[12]);
+                $display("R13: %h", reg_file[13]);
+                $display("R14: %h", reg_file[14]);
+                $display("R15: %h", reg_file[15]);
+                $display("R16: %h", reg_file[16]);
+                $display("R17: %h", reg_file[17]);
+                $display("R18: %h", reg_file[18]);
+                $display("R19: %h", reg_file[19]);
+                $display("R20: %h", reg_file[20]);
+                $display("R21: %h", reg_file[21]);
+                $display("R22: %h", reg_file[22]);
+                $display("R23: %h", reg_file[23]);
+                $display("R24: %h", reg_file[24]);
+                $display("R25: %h", reg_file[25]);
+                $display("R26: %h", reg_file[26]);
+                $display("R27: %h", reg_file[27]);
+                $display("R28: %h", reg_file[28]);
+                $display("R29: %h", reg_file[29]);
+                $display("R30: %h", reg_file[30]);
+                $display("R31: %h", reg_file[31]);
+                $display("ADDR-100: %h", mem[100]);
+                $display("ADDR-101: %h", mem[101]);
+                $display("ADDR-102: %h", mem[102]);
+                $display("ADDR-103: %h", mem[103]);
+                $display("ADDR-104: %h", mem[104]);
+                $display("----------------------------------------------------");
             end
         endcase
     end
