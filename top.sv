@@ -72,8 +72,7 @@ module top (
                 funct3 <= instruction[14:12];
                 funct7 <= instruction[31:25];
                 case (instruction[6:0])
-                    7'b0110111: imm <= {instruction[31:12], 12'b0}; // U-type
-                    7'b0010111: imm <= {instruction[31:12], 12'b0}; // U-type
+                    7'b0110111, 7'b0010111: imm <= {instruction[31:12], 12'b0}; // U-type
                     7'b1101111: imm <= {{13{instruction[31]}}, instruction[19:12], instruction[20], instruction[30:21], 1'b0}; // J-type
                     7'b1100111, 7'b0000011, 7'b0010011: imm <= {{20{instruction[31]}}, instruction[31:20]}; // I-type
                     7'b1100011: imm <= {instruction[31], instruction[7], instruction[30:25], instruction[11:8], 1'b0}; // B-type
@@ -215,7 +214,7 @@ module top (
                     end
                     7'b1101111, 7'b1100111, 7'b1100011: begin
                         $display("JUMPIIIIIIIIIIIIIIIIIIING");
-                        pc <= jmp_addr; // TODO: Check if this is correct, maybe move this part to the execure stage to save some time
+                        pc <= jmp_addr; // TODO: Check if this is correct, maybe move this part to the execute stage to save some time
                     end
                     default: begin end
                 endcase
@@ -240,28 +239,6 @@ module top (
                 $display("R7: %h", reg_file[7]);
                 $display("R8: %h", reg_file[8]);
                 $display("R9: %h", reg_file[9]);
-                $display("R10: %h", reg_file[10]);
-                $display("R11: %h", reg_file[11]);
-                $display("R12: %h", reg_file[12]);
-                $display("R13: %h", reg_file[13]);
-                $display("R14: %h", reg_file[14]);
-                $display("R15: %h", reg_file[15]);
-                $display("R16: %h", reg_file[16]);
-                $display("R17: %h", reg_file[17]);
-                $display("R18: %h", reg_file[18]);
-                $display("R19: %h", reg_file[19]);
-                $display("R20: %h", reg_file[20]);
-                $display("R21: %h", reg_file[21]);
-                $display("R22: %h", reg_file[22]);
-                $display("R23: %h", reg_file[23]);
-                $display("R24: %h", reg_file[24]);
-                $display("R25: %h", reg_file[25]);
-                $display("R26: %h", reg_file[26]);
-                $display("R27: %h", reg_file[27]);
-                $display("R28: %h", reg_file[28]);
-                $display("R29: %h", reg_file[29]);
-                $display("R30: %h", reg_file[30]);
-                $display("R31: %h", reg_file[31]);
                 $display("ADDR-100: %h", mem[100]);
                 $display("ADDR-101: %h", mem[101]);
                 $display("ADDR-102: %h", mem[102]);
